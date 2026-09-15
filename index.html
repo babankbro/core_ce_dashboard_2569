@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard สภาพแวดล้อม</title>
+    
+    <!-- นำเข้า Tailwind CSS สำหรับการตกแต่ง -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- นำเข้า Chart.js สำหรับวาดกราฟ -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- นำเข้า Google Fonts (Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- นำเข้า FontAwesome สำหรับไอคอน -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Inter', 'Sarabun', sans-serif;
+            background-color: #f3f4f6; /* สีพื้นหลังสว่างแบบสบายตา */
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+    </style>
+</head>
+<body class="text-gray-800 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                    <i class="fa-solid fa-leaf text-green-500"></i>
+                    Environment Dashboard
+                </h1>
+                <p class="text-gray-500 mt-1">ระบบติดตามอุณหภูมิและความชื้นแบบเรียลไทม์</p>
+            </div>
+            
+            <button onclick="fetchData()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-rotate-right" id="refresh-icon"></i>
+                รีเฟรชข้อมูล
+            </button>
+        </header>
+
+        <!-- ข้อความแจ้งเตือนเมื่อโหลดข้อมูลผิดพลาด -->
+        <div id="error-message" class="hidden mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative" role="alert">
+            <strong class="font-bold">เกิดข้อผิดพลาด!</strong>
+            <span class="block sm:inline">ไม่สามารถดึงข้อมูลจาก Google Sheets ได้ กรุณาตรวจสอบลิงก์หรือการตั้งค่าการแชร์</span>
+        </div>
+
+        <!-- ส่วนแสดงค่าล่าสุด (Summary Cards) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- อุณหภูมิ Card -->
+            <div class="glass-card rounded-2xl p-6 relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <i class="fa-solid fa-temperature-half text-8xl text-orange-500"></i>
+                </div>
+                <div class="relative z-10">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-500">
+                            <i class="fa-solid fa-temperature-full"></i>
+                        </div>
+                        <h2 class="text-lg font-semibold text-gray-600">อุณหภูมิล่าสุด (Temperature)</h2>
+                    </div>
+                    <div class="mt-4 flex items-baseline gap-2">
+                        <span id="latest-temp" class="text-5xl font-bold text-gray-900">--</span>
+                        <span class="text-2xl font-medium text-gray-500">°C</span>
+                    </div>
+                    <p id="time-temp" class="text-sm text-gray-400 mt-3"><i class="fa-regular fa-clock mr-1"></i> อัปเดตล่าสุด: --</p>
+                </div>
+            </div>
+
+            <!-- ความชื้น Card -->
+            <div class="glass-card rounded-2xl p-6 relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <i class="fa-solid fa-droplet text-8xl text-blue-500"></i>
+                </div>
+                <div class="relative z-10">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-500">
+                            <i class="fa-solid fa-droplet"></i>
+                        </div>
+                        <h2 class="text-lg font-semibold text-gray-600">ความชื้นล่าสุด (Humidity)</h2>
+                    </div>
+                    <div class="mt-4 flex items-baseline gap-2">
+                        <span id="latest-hum" class="text-5xl font-bold text-gray-900">--</span>
+                        <span class="text-2xl font-medium text-gray-500">%</span>
+                    </div>
+                    <p id="time-hum" class="text-sm text-gray-400 mt-3"><i class="fa-regular fa-clock mr-1"></i> อัปเดตล่าสุด: --</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ส่วนแสดงกราฟ -->
+        <div class="glass-card rounded-2xl p-6 mb-8 w-full">
+            <h3 class="text-xl font-bold text-gray-800 mb-4 border-b pb-3">กราฟแนวโน้มอุณหภูมิและความชื้น</h3>
+            <div class="relative h-[400px] w-full">
+                <canvas id="envChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center text-gray-500 text-sm mt-8">
+            <p>Data Source: Google Sheets CSV</p>
+        </footer>
+    </div>
+
+    <script>
+        // ลิงก์ CSV จาก Google Sheets ของผู้ใช้
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRgqMg_1qg6lZn6ORF388woiopZXD85VcxrSa72JPkj3ZtGax2KE48AZ1ETAPpjzSPnPoCh_U7l_Yw0/pub?output=csv';
+        let envChart = null;
+
+        // ฟังก์ชันอ่านไฟล์ CSV แบบรองรับเครื่องหมายคำพูด (Quotes)
+        function parseCSVRow(str) {
+            let arr = [];
+            let quote = false;
+            let col = '';
+            for (let i = 0; i < str.length; i++) {
+                let cc = str[i], nc = str[i+1];
+                if (cc === '"' && quote && nc === '"') { col += cc; ++i; continue; }
+                if (cc === '"') { quote = !quote; continue; }
+                if (cc === ',' && !quote) { arr.push(col.trim()); col = ''; continue; }
+                col += cc;
+            }
+            arr.push(col.trim());
+            return arr;
+        }
+
+        // ฟังก์ชันหลักในการดึงข้อมูล
+        async function fetchData() {
+            const refreshIcon = document.getElementById('refresh-icon');
+            refreshIcon.classList.add('fa-spin'); // เพิ่มอนิเมชั่นหมุนตอนโหลด
+            document.getElementById('error-message').classList.add('hidden');
+
+            try {
+                // เติมพารามิเตอร์ป้องกันการแคช (Cache Busting)
+                const cacheBuster = new Date().getTime();
+                const response = await fetch(`${CSV_URL}&t=${cacheBuster}`);
+                
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                const csvText = await response.text();
+                processData(csvText);
+            } catch (error) {
+                console.error('Error fetching CSV:', error);
+                document.getElementById('error-message').classList.remove('hidden');
+            } finally {
+                refreshIcon.classList.remove('fa-spin');
+            }
+        }
+
+        function processData(csvText) {
+            const lines = csvText.split('\n').filter(line => line.trim().length > 0);
+            if (lines.length < 2) return; // ต้องมี Header 1 บรรทัด และข้อมูลอย่างน้อย 1 บรรทัด
+
+            const headers = parseCSVRow(lines[0].toLowerCase());
+            
+            // หาคอลัมน์อัตโนมัติ โดยอิงจากคำที่น่าจะเป็นไปได้ (ถ้าไม่เจอ จะตั้งค่าเริ่มต้นเป็น 0, 1, 2)
+            let timeIdx = 0;
+            let tempIdx = 1;
+            let humIdx = 2;
+
+            headers.forEach((header, index) => {
+                if (header.includes('time') || header.includes('date') || header.includes('เวลา') || header.includes('วัน')) timeIdx = index;
+                if (header.includes('temp') || header.includes('อุณหภูมิ')) tempIdx = index;
+                if (header.includes('hum') || header.includes('ความชื้น') || header.includes('humid')) humIdx = index;
+            });
+
+            const labels = [];
+            const temperatures = [];
+            const humidities = [];
+
+            // อ่านข้อมูลตั้งแต่บรรทัดที่ 2 เป็นต้นไป
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVRow(lines[i]);
+                if (values.length > Math.max(timeIdx, tempIdx, humIdx)) {
+                    labels.push(values[timeIdx]);
+                    
+                    // ลบตัวอักษรที่อาจติดมากับตัวเลข แล้วแปลงเป็นทศนิยม
+                    const tempVal = parseFloat(values[tempIdx].replace(/[^0-9.-]+/g,""));
+                    const humVal = parseFloat(values[humIdx].replace(/[^0-9.-]+/g,""));
+                    
+                    temperatures.push(isNaN(tempVal) ? null : tempVal);
+                    humidities.push(isNaN(humVal) ? null : humVal);
+                }
+            }
+
+            updateUI(labels, temperatures, humidities);
+        }
+
+        function updateUI(labels, temperatures, humidities) {
+            // อัปเดตตัวเลขล่าสุด (เอาค่าแถวสุดท้าย)
+            if (temperatures.length > 0 && humidities.length > 0) {
+                const lastTemp = temperatures[temperatures.length - 1];
+                const lastHum = humidities[humidities.length - 1];
+                const lastTime = labels[labels.length - 1];
+
+                document.getElementById('latest-temp').innerText = lastTemp !== null ? lastTemp.toFixed(1) : '--';
+                document.getElementById('latest-hum').innerText = lastHum !== null ? lastHum.toFixed(1) : '--';
+                
+                document.getElementById('time-temp').innerHTML = `<i class="fa-regular fa-clock mr-1"></i> อัปเดตล่าสุด: ${lastTime || 'ไม่ระบุ'}`;
+                document.getElementById('time-hum').innerHTML = `<i class="fa-regular fa-clock mr-1"></i> อัปเดตล่าสุด: ${lastTime || 'ไม่ระบุ'}`;
+            }
+
+            // อัปเดตกราฟ
+            updateChart(labels, temperatures, humidities);
+        }
+
+        function updateChart(labels, temperatures, humidities) {
+            const ctx = document.getElementById('envChart').getContext('2d');
+            
+            // จำกัดข้อมูลแสดงผลสัก 50 ค่าล่าสุดเพื่อไม่ให้กราฟแน่นเกินไป (สามารถปรับแก้ได้)
+            const maxPoints = 50;
+            const displayLabels = labels.slice(-maxPoints);
+            const displayTemp = temperatures.slice(-maxPoints);
+            const displayHum = humidities.slice(-maxPoints);
+
+            // ทำลายกราฟเก่าก่อนวาดใหม่ (ป้องกันปัญหากราฟซ้อนทับกัน)
+            if (envChart) {
+                envChart.destroy();
+            }
+
+            // ตั้งค่า Chart.js
+            envChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: displayLabels,
+                    datasets: [
+                        {
+                            label: 'อุณหภูมิ (°C)',
+                            data: displayTemp,
+                            borderColor: 'rgb(249, 115, 22)', // Tailwind Orange-500
+                            backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            fill: true,
+                            tension: 0.3, // ทำให้เส้นโค้งมนสมูทขึ้น
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'ความชื้น (%)',
+                            data: displayHum,
+                            borderColor: 'rgb(59, 130, 246)', // Tailwind Blue-500
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            fill: true,
+                            tension: 0.3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { family: "'Inter', sans-serif", size: 14 }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleFont: { family: "'Inter', sans-serif" },
+                            bodyFont: { family: "'Inter', sans-serif" },
+                            padding: 12,
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { 
+                                maxTicksLimit: 10,
+                                font: { family: "'Inter', sans-serif" }
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'อุณหภูมิ (°C)',
+                                color: 'rgb(249, 115, 22)'
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'ความชื้น (%)',
+                                color: 'rgb(59, 130, 246)'
+                            },
+                            grid: {
+                                drawOnChartArea: false // ป้องกันเส้น Grid ซ้อนทับกัน
+                            },
+                            min: 0,
+                            max: 100 // ความชื้นควรอยู่ระหว่าง 0-100%
+                        }
+                    }
+                }
+            });
+        }
+
+        // เริ่มต้นดึงข้อมูลเมื่อโหลดหน้าเว็บเสร็จ
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchData();
+            
+            // ตั้งเวลาให้รีเฟรชข้อมูลอัตโนมัติทุกๆ 1 นาที (60000 มิลลิวินาที)
+            setInterval(fetchData, 60000);
+        });
+    </script>
+</body>
+</html>
